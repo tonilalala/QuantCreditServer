@@ -85,6 +85,7 @@ class TickersTracker(object):
         """
 
         self.tracker = {}
+
         for i, symbol in enumerate(self.symbols):
             if self.filenames != []:
                 all_record_pd = pd.read_csv(self.filenames[i])
@@ -141,14 +142,9 @@ class TickersTracker(object):
             df (:obj:pd.DataFrame): price time series
         """
         df_cp = copy.deepcopy(df)
-        df_cp_format = copy.deepcopy(df_cp)
-        df_cp['index_orig'] = df_cp.index
-        df_cp['datetime_orig'] = df_cp['datetime']
-
         df_cp['datetime'] = pd.to_datetime(df_cp['datetime'], errors='coerce')
-
         df_cp.index = df_cp['datetime'].apply(lambda x: pd.Timestamp(x))
-        df_cp = df_cp[['price','index_orig','datetime_orig']]
+        df_cp = df_cp[['price']]
         df_cp = df_cp.sort_index()
         # calculate MA & sigma by datetime delta < 24hr, to be tested
         S_avg = df_cp.rolling('24H', min_periods=1).mean()
@@ -159,24 +155,18 @@ class TickersTracker(object):
         df_merged = reduce(lambda left, right: pd.merge(left, right,
                                                         left_index= True, right_index=True,
                                                         how='outer'), data_frames)
-        # df_signal = signal(df_merged)
+        # Two strategies. Use strategy1 as default
         df_merged['signal'] = df_merged.apply(strategy1, axis = 1) #4a momentum strategy
         # df_merged['signal'] = df_merged.apply(strategy2, axis=1) #4b mean reversion strategy
         df_merged['signal'] = df_merged['signal'].fillna(method = 'ffill')
-
         df_merged['pnl'] = df_merged['signal'].shift(1)*(df_merged['price'] - df_merged['price'].shift(1))
 
+        # reformat df
+        df_merged = df_merged.reset_index()
+        df_merged['datetime'] = pd.to_datetime(df_merged['datetime'], errors='coerce')
+        df_merged['datetime'] = df_merged.datetime.dt.strftime('%Y-%m-%d-%H:%M')
         csv_filename = '{ticker}_result.csv'.format(ticker=symbol)
-
-        df_merged_covert = pd.merge(df_cp_format, df_merged,
-                                    left_index= True,
-                                    right_on = 'index_orig',
-                                    how = 'left')
-
-        df_merged['datetime'] = df_merged.index
-        df_merged = df_merged.reindex()
         df_merged.to_csv(csv_filename)
-        # df_empty = pd.DataFrame()
         print("Generate:, ", csv_filename)
         return df_merged
 
@@ -207,11 +197,8 @@ class TickersTracker(object):
                 df = df[1:]  # take the data less the header row
                 df.columns = new_header  # set the header row as the df header
                 df.head()
-                try:
-                    new_df = df[['datetime', 'close']]
-                except Exception:
-                    print("API access limiataion")
-                    exit()
+
+                new_df = df[['datetime', 'close']]
                 new_df['datetime'] = pd.to_datetime(df['datetime'], errors='coerce')
                 new_df['datetime'] = new_df.datetime.dt.strftime('%Y-%m-%d-%H:%M')
                 for col in new_df.columns[1:]:
@@ -259,8 +246,6 @@ class TickersTracker(object):
         for symbol, ticker in self.tracker.items():
             df = ticker.df_result
             mask = (df.datetime.values == datetime_object)
-            import ipdb
-            ipdb.set_trace()
             if mask.sum() == 0:
                 out_str.append("Server has no data")
                 continue
@@ -316,17 +301,17 @@ class TickersTracker(object):
         except Exception as e:
             print("Error when running function reset, ", e)
             return 1
-
+        return 0
 
 if __name__ == '__main__':
     ## Testings
-    tic = TickersTracker(['AAPL', 'IBM'], 5)
+    tic = TickersTracker(['AAPL', 'IBM'], 5, filenames=['AAPL_price.csv', 'IBM_price.csv'])
     # print(tic.del_ticker('IBM'))
     # print(tic.add_ticker('NVDA'))
     # out = tic.query_price_by_time('2024-01-21-16:35')
     # print("Price", out)
-    # out = tic.query_signal_by_time('2022-01-21-16:35')
-    # print("Signal", out)
+    out = tic.query_signal_by_time('2022-01-21-16:35')
+    print("Signal", out)
     # print(tic.reset())
     # out = tic.query_price_by_time('2022-01-21-16:35')
     # print("Price", out)

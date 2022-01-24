@@ -42,7 +42,10 @@ def on_new_client(client, connection, tickers_tracker):
 			reply = "Add ticker {symbol}, Return Code: {code}".format(symbol=instruction[2],code=status)
 		elif instruction[1] == "--reset":
 			status = tickers_tracker.reset()
-			reply = "Reset! Return Code: {code}".format(code=status)
+			if status == 1:
+				reply = "Reset Error! Return Code: {code}, maybe exceed API limitation, try later!".format(code=status)
+			else:
+				reply = "Reset successfully! Return Code: {code}".format(code=status)
 		else:
 			reply = "Invalid message! Try again!"
 
