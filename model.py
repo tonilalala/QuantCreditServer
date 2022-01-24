@@ -7,6 +7,34 @@ import numpy as np
 import datetime
 from functools import reduce
 
+################# Helper Function #################
+def strategy1(x):
+    """
+    momentum strategy 4(a)
+    :param x: pandas series with price, S_avg, S_std
+    :return: position
+    """
+    if x['price'] > x['S_avg'] + x['S_std']:
+        return 1
+    elif x['price'] < x['S_avg'] - x['S_std']:
+        return -1
+    else:
+        return np.nan
+
+def strategy2(x):
+    """
+    mean reversion strategy 4(b)
+    :param x: pandas series with price, S_avg, S_std
+    :return: position
+    """
+    if x['price'] > x['S_avg'] + x['S_std']:
+        return -1
+    elif x['price'] < x['S_avg'] - x['S_std']:
+        return 1
+    else:
+        return np.nan
+
+############## Obejects ##############
 class Ticker(object):
     def __init__(self, symbol, df_historical, df_result):
         """Tickers object contains relevant information.
@@ -50,7 +78,24 @@ class TickersTracker(object):
         self.slides = self.slides[:2]
         self.finnhub_client = finnhub.Client(api_key=self.api_key_finhub)
 
-        self.reset()
+        self.init()
+
+    def init(self):
+        """Init trackers records
+        """
+
+        self.tracker = {}
+        for i, symbol in enumerate(self.symbols):
+            if self.filenames != []:
+                all_record_pd = pd.read_csv(self.filenames[i])
+                print("Reload:, ", self.filenames[i])
+                all_record_w_signal = self.generate_signal_pnl(symbol, all_record_pd)
+                new_ticker = Ticker(symbol, all_record_pd, all_record_w_signal)
+            else:
+                new_ticker = self.query_ticker(symbol)
+
+            self.tracker[symbol] = new_ticker
+        return 0
 
     def update_tickers(self):
         for symbol, ticker in self.tracker.items():
@@ -95,14 +140,6 @@ class TickersTracker(object):
             symbol (:obj:str): ticker symbol
             df (:obj:pd.DataFrame): price time series
         """
-        def strategy1(x):
-            if x['price'] > x['S_avg'] + x['S_std']:
-                return 1
-            elif x['price'] < x['S_avg'] - x['S_std']:
-                return -1
-            else:
-                return np.nan
-
         df_cp = copy.deepcopy(df)
         df_cp['datetime'] = pd.to_datetime(df_cp['datetime'], errors='coerce')
         df_cp.index = df_cp['datetime'].apply(lambda x: pd.Timestamp(x))
@@ -118,12 +155,13 @@ class TickersTracker(object):
                                                         left_index= True, right_index=True,
                                                         how='outer'), data_frames)
         # df_signal = signal(df_merged)
-        df_merged['signal'] = df_merged.apply(strategy1, axis = 1)
+        df_merged['signal'] = df_merged.apply(strategy1, axis = 1) #4a momentum strategy
+        # df_merged['signal'] = df_merged.apply(strategy2, axis=1) #4b mean reversion strategy
         df_merged['signal'] = df_merged['signal'].fillna(method = 'ffill')
 
         df_merged['pnl'] = df_merged['signal'].shift(1)*(df_merged['price'] - df_merged['price'].shift(1))
 
-        csv_filename = '{ticker}_result.csv'.format(ticker=symbol)
+        csv_filename = '{ticker}_result_mean_reversion.csv'.format(ticker=symbol)
         df_merged.to_csv(csv_filename)
         # df_empty = pd.DataFrame()
         print("Generate:, ", csv_filename)
@@ -156,7 +194,11 @@ class TickersTracker(object):
                 df = df[1:]  # take the data less the header row
                 df.columns = new_header  # set the header row as the df header
                 df.head()
-                new_df = df[['datetime', 'close']]
+                try:
+                    new_df = df[['datetime', 'close']]
+                except Exception:
+                    print("API access limiataion")
+                    exit()
                 new_df['datetime'] = pd.to_datetime(df['datetime'], errors='coerce')
                 new_df['datetime'] = new_df.datetime.dt.strftime('%Y-%m-%d-%H:%M')
                 for col in new_df.columns[1:]:
@@ -252,19 +294,10 @@ class TickersTracker(object):
             return 1
 
     def reset(self):
+        """Init trackers records with exception handler
+        """
         try:
-            self.tracker = {}
-            for i, symbol in enumerate(self.symbols):
-                if self.filenames != []:
-                    all_record_pd = pd.read_csv(self.filenames[i])
-                    print("Reload:, ", self.filenames[i])
-                    all_record_w_signal = self.generate_signal_pnl(symbol, all_record_pd)
-                    new_ticker = Ticker(symbol, all_record_pd, all_record_w_signal)
-                else:
-                    new_ticker = self.query_ticker(symbol)
-
-                self.tracker[symbol] = new_ticker
-            return 0
+           self.init()
         except Exception as e:
             print("Error when running function reset, ", e)
             return 1
@@ -272,13 +305,13 @@ class TickersTracker(object):
 
 if __name__ == '__main__':
     ## Testings
-    tic = TickersTracker(['AAPL', 'IBM'], 5, filenames=["AAPL_price.csv", "IBM_price.csv"])
-    print(tic.del_ticker('IBM'))
-    print(tic.add_ticker('NVDA'))
-    out = tic.query_price_by_time('2024-01-21-16:35')
-    print("Price", out)
-    out = tic.query_signal_by_time('2022-01-21-16:35')
-    print("Signal", out)
-    print(tic.reset())
-    out = tic.query_price_by_time('2022-01-21-16:35')
-    print("Price", out)
+    tic = TickersTracker(['AAPL', 'IBM'], 5)
+    # print(tic.del_ticker('IBM'))
+    # print(tic.add_ticker('NVDA'))
+    # out = tic.query_price_by_time('2024-01-21-16:35')
+    # print("Price", out)
+    # out = tic.query_signal_by_time('2022-01-21-16:35')
+    # print("Signal", out)
+    # print(tic.reset())
+    # out = tic.query_price_by_time('2022-01-21-16:35')
+    # print("Price", out)
