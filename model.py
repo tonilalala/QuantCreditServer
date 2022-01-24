@@ -141,9 +141,14 @@ class TickersTracker(object):
             df (:obj:pd.DataFrame): price time series
         """
         df_cp = copy.deepcopy(df)
+        df_cp_format = copy.deepcopy(df_cp)
+        df_cp['index_orig'] = df_cp.index
+        df_cp['datetime_orig'] = df_cp['datetime']
+
         df_cp['datetime'] = pd.to_datetime(df_cp['datetime'], errors='coerce')
+
         df_cp.index = df_cp['datetime'].apply(lambda x: pd.Timestamp(x))
-        df_cp = df_cp[['price']]
+        df_cp = df_cp[['price','index_orig','datetime_orig']]
         df_cp = df_cp.sort_index()
         # calculate MA & sigma by datetime delta < 24hr, to be tested
         S_avg = df_cp.rolling('24H', min_periods=1).mean()
@@ -161,7 +166,15 @@ class TickersTracker(object):
 
         df_merged['pnl'] = df_merged['signal'].shift(1)*(df_merged['price'] - df_merged['price'].shift(1))
 
-        csv_filename = '{ticker}_result_mean_reversion.csv'.format(ticker=symbol)
+        csv_filename = '{ticker}_result.csv'.format(ticker=symbol)
+
+        df_merged_covert = pd.merge(df_cp_format, df_merged,
+                                    left_index= True,
+                                    right_on = 'index_orig',
+                                    how = 'left')
+
+        df_merged['datetime'] = df_merged.index
+        df_merged = df_merged.reindex()
         df_merged.to_csv(csv_filename)
         # df_empty = pd.DataFrame()
         print("Generate:, ", csv_filename)
@@ -246,6 +259,8 @@ class TickersTracker(object):
         for symbol, ticker in self.tracker.items():
             df = ticker.df_result
             mask = (df.datetime.values == datetime_object)
+            import ipdb
+            ipdb.set_trace()
             if mask.sum() == 0:
                 out_str.append("Server has no data")
                 continue
