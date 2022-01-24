@@ -1,0 +1,4 @@
+finnhub_python==2.4.8
+numpy==1.22.1
+pandas==1.4.0
+requests==2.27.1
